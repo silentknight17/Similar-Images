@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Similarity Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.9.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+  </head>
+  <body>
+    <h1>Image Similarity Detection</h1>
+    <input type="file" id="imageInput" multiple />
+    <button onclick="compareImages()">Compare Images</button>
+    <p>Similarity Scores:</p>
+    <ul id="similarityList"></ul>
+    <script>
+      let model;
+
+      async function loadModel() {
+        model = await mobilenet.load();
+        console.log("Model loaded");
+      }
+
+      async function compareImages() {
+        const imageInput = document.getElementById("imageInput");
+        const similarityList = document.getElementById("similarityList");
+
+        if (imageInput.files.length < 2) {
+          alert("Please select at least two images.");
+          return;
+        }
+
+        // Clear previous results
+        similarityList.innerHTML = "";
+
+        // Load and process images
+        const images = [];
+        const promises = Array.from(imageInput.files).map((file) =>
+          loadImage(URL.createObjectURL(file))
+        );
+        const imgs = await Promise.all(promises);
+
+        // Extract features for each image
+        const features = await Promise.all(imgs.map(extractFeatures));
+
+        // Compare images pairwise
+        for (let i = 0; i < features.length; i++) {
+          for (let j = i + 1; j < features.length; j++) {
+            const similarityScore = calculateSimilarity(
+              features[i],
+              features[j]
+            );
+            const listItem = document.createElement("li");
+            listItem.innerHTML = `
+              <div>
+                <img src="${URL.createObjectURL(imageInput.files[i])}" style="max-width: 100px; margin-right: 10px;">
+                <img src="${URL.createObjectURL(imageInput.files[j])}" style="max-width: 100px;">
+                Similarity Score: ${similarityScore.toFixed(4)}
+              </div>
+            `;
+            similarityList.appendChild(listItem);
+          }
+        }
+      }
+
+      async function loadImage(url) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () =>
+            resolve(
+              tf.browser
+                .fromPixels(img)
+                .resizeNearestNeighbor([224, 224])
+                .toFloat()
+                .expandDims(),
+            );
+          img.onerror = (err) => reject(err);
+          img.src = url;
+        });
+      }
+
+      async function extractFeatures(image) {
+        const features = model.infer(image, "conv_preds");
+        return features;
+      }
+
+      function calculateSimilarity(featureVector1, featureVector2) {
+        const cosineSimilarity = tf.metrics.cosineProximity(
+          featureVector1,
+          featureVector2,
+        );
+        return cosineSimilarity.dataSync()[0];
+      }
+
+      window.onload = function () {
+        loadModel();
+      };
+    </script>
+  </body>
+</html>
